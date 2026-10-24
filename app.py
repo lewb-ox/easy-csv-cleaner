@@ -55,7 +55,8 @@ class CsvCleanerApp:
         self.cancel_button = ttk.Button(button_row, text="Cancel", command=self.cancel_cleaning, state="disabled")
         self.cancel_button.pack(side="right", padx=(0, 8))
 
-        self.progress = ttk.Progressbar(main, mode="indeterminate", length=500)
+        self.progress_value = tk.DoubleVar(value=0)
+        self.progress = ttk.Progressbar(main, mode="determinate", maximum=100, variable=self.progress_value, length=500)
         self.progress.pack(fill="x", pady=(16, 0))
         self.status = ttk.Label(main, text="", wraplength=500)
         self.status.pack(anchor="w", pady=(10, 0))
@@ -68,6 +69,8 @@ class CsvCleanerApp:
         )
         if selected:
             self.input_path.set(selected)
+            self.progress.stop()
+            self.progress_value.set(0)
             self.status.configure(text="")
 
     def run_cleaner(self) -> None:
@@ -173,6 +176,8 @@ class CsvCleanerApp:
             self.result_queue.put(("cancelled", None))
             self.poll_after_id = self.root.after(0, self.poll_result)
             return
+        self.progress.configure(mode="indeterminate")
+        self.progress_value.set(0)
         self.progress.start(12)
         self.status.configure(text="Cleaning... Click Cancel to stop.")
         self.worker = threading.Thread(target=self.run_job, args=(job,), daemon=True)
@@ -276,6 +281,8 @@ class CsvCleanerApp:
         self.browse_button.configure(state="normal")
         self.path_entry.configure(state="normal")
         if kind == "success":
+            self.progress.configure(mode="determinate")
+            self.progress_value.set(100)
             output, total, fixed = payload
             self.status.configure(text=f"Done. {total} rows processed; {fixed} rows fixed.\nSaved: {output}")
             messagebox.showinfo(
@@ -284,8 +291,12 @@ class CsvCleanerApp:
                 parent=self.root,
             )
         elif kind == "cancelled":
+            self.progress.configure(mode="determinate")
+            self.progress_value.set(0)
             self.status.configure(text="Cleaning cancelled. Partial output removed.")
         else:
+            self.progress.configure(mode="determinate")
+            self.progress_value.set(0)
             self.status.configure(text="Cleaning stopped because an error occurred.")
             messagebox.showerror("Could not clean file", payload, parent=self.root)
 
