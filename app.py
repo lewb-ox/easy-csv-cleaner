@@ -25,6 +25,9 @@ class CsvCleanerApp:
         self.result_queue: queue.Queue[tuple[str, object]] = queue.Queue()
         self.start_after_id: str | None = None
         self.poll_after_id: str | None = None
+        self.worker: threading.Thread | None = None
+        self.running = False
+        self.closing = False
 
         main = ttk.Frame(root, padding=24)
         main.pack(fill="both", expand=True)
@@ -85,6 +88,7 @@ class CsvCleanerApp:
             return
 
         self.cancel_event.clear()
+        self.running = True
         self.clean_button.configure(state="disabled")
         self.browse_button.configure(state="disabled")
         self.path_entry.configure(state="disabled")
@@ -140,14 +144,22 @@ class CsvCleanerApp:
 
     def start_job(self, job: tuple[str, Path, object]) -> None:
         self.start_after_id = None
+        if self.closing or self.cancel_event.is_set():
+            self.result_queue.put(("cancelled", None))
+            self.poll_after_id = self.root.after(0, self.poll_result)
+            return
         self.progress.start(12)
         self.status.configure(text="Cleaning... Click Cancel to stop.")
         self.worker = threading.Thread(target=self.run_job, args=(job,), daemon=True)
-        self.worker.start()
+        try:
+            self.worker.start()
+        except Exception as error:
+            self.result_queue.put(("error", f"Could not start the cleaning worker: {error}"))
         self.poll_after_id = self.root.after(100, self.poll_result)
 
     def run_job(self, job: tuple[str, Path, object]) -> None:
         kind, destination, source_info = job
+        result: tuple[str, object] = ("error", "The cleaning worker stopped unexpectedly.")
         try:
             if kind == "csv":
                 output, total, fixed = clean_csv(source_info, destination, self.cancel_event)
@@ -155,11 +167,16 @@ class CsvCleanerApp:
                 archive_path, member = source_info
                 total, fixed = self.clean_zip_to_path(archive_path, member, destination)
                 output = destination
-            self.result_queue.put(("success", (output, total, fixed)))
+            result = ("success", (output, total, fixed))
         except CleaningCancelled:
-            self.result_queue.put(("cancelled", None))
-        except (OSError, zipfile.BadZipFile, csv.Error, UnicodeError, RuntimeError) as error:
-            self.result_queue.put(("error", str(error)))
+            result = ("cancelled", None)
+        except Exception as error:
+            # Preserve the user-facing error while retaining the traceback for diagnosis.
+            import traceback
+            detail = "".join(traceback.format_exception(type(error), error, error.__traceback__))
+            result = ("error", f"{error}\n\nDetails for troubleshooting:\n{detail}")
+        finally:
+            self.result_queue.put(result)
 
     def clean_zip_to_path(self, archive_path: Path, member: zipfile.ZipInfo, destination: Path) -> tuple[int, int]:
         temporary_input: Path | None = None
@@ -191,6 +208,9 @@ class CsvCleanerApp:
         self.status.configure(text="Stopping after the current row...")
 
     def poll_result(self) -> None:
+        if self.closing:
+            self.finish_close_when_ready()
+            return
         try:
             kind, payload = self.result_queue.get_nowait()
         except queue.Empty:
@@ -199,6 +219,7 @@ class CsvCleanerApp:
 
         self.poll_after_id = None
         self.progress.stop()
+        self.running = False
         self.cancel_button.configure(state="disabled")
         self.clean_button.configure(state="normal")
         self.browse_button.configure(state="normal")
@@ -248,17 +269,36 @@ class CsvCleanerApp:
         return result[0]
 
     def close(self) -> None:
-        if self.cancel_event.is_set() or self.clean_button.instate(["disabled"]):
+        if self.closing:
+            return
+        if self.running:
+            self.closing = True
             self.cancel_event.set()
-            self.root.after(50, self.close_when_finished)
+            if self.start_after_id is not None:
+                self.root.after_cancel(self.start_after_id)
+                self.start_after_id = None
+                self.result_queue.put(("cancelled", None))
+            self.status.configure(text="Stopping the current job before closing...")
+            self.finish_close_when_ready()
         else:
             self.root.destroy()
 
-    def close_when_finished(self) -> None:
-        if self.worker.is_alive():
-            self.root.after(50, self.close_when_finished)
-        else:
+    def finish_close_when_ready(self) -> None:
+        if self.worker is not None and self.worker.is_alive():
+            self.root.after(50, self.finish_close_when_ready)
+            return
+        if self.poll_after_id is not None:
+            try:
+                self.root.after_cancel(self.poll_after_id)
+            except tk.TclError:
+                pass
+            self.poll_after_id = None
+        self.progress.stop()
+        self.running = False
+        try:
             self.root.destroy()
+        except tk.TclError:
+            pass
 
 
 def main() -> None:
