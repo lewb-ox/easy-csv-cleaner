@@ -81,7 +81,7 @@ jobs:
           first launch. After attempting to open, use System Settings > Privacy
           & Security > Open Anyway if you trust this download.
 
-          Before publishing, complete the desktop verification checklist in README.md
+          Before publishing, complete the desktop verification checklist in DEVELOPMENT.md
           on both architectures. The build checks bundle signatures, Tk startup,
           and CSV/ZIP cleaning; it does not exercise every native dialog.
           EOF

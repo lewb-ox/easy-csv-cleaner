@@ -1,150 +1,94 @@
 # Easy CSV Cleaner
 
-A small cross-platform Python app that replaces embedded line breaks in CSV fields with spaces.
+Remove unwanted line breaks inside CSV cells with a simple desktop app for Windows and macOS. Choose a CSV file, or a CSV inside a ZIP archive, and save a cleaned copy.
 
-## Install the macOS app
-
-Download a macOS ZIP from this repository's [GitHub Releases](https://github.com/lewb-ox/easy-csv-cleaner/releases):
-
-- **arm64** for Apple Silicon Macs (M-series chips).
-- **x86_64** for Intel Macs.
-
-Unzip it, drag **Easy CSV Cleaner.app** into **Applications**, and double-click it.
-Python and Tkinter are bundled; recipients do not need to install them.
-Use **Browse...** to select a CSV or ZIP, then **Clean CSV** to choose where to save the result.
-
-These builds are ad-hoc signed, **not Apple notarized**. If macOS blocks the first
-launch, attempt to open the app, then go to **System Settings → Privacy & Security →
-Open Anyway** if you trust the download. See [Apple's guidance for opening apps](https://support.apple.com/en-gb/102445).
-For distribution without this security exception, an Apple Developer ID certificate
-and Apple notarization are required; neither is configured in this repository.
-
-Each ZIP has a matching `.sha256` file. To verify a download, put both files in the
-same folder and run `shasum -a 256 -c EasyCsvCleaner-1.0.0-macOS-arm64.zip.sha256`,
-substituting the actual filename.
-
-## Requirements
-
-For running from source or building (not required for the packaged app):
-
-- Python 3.10 or newer
-- Tkinter (included with most Python installations; on some Linux distributions it is installed separately)
-
-## Desktop app
-
-Launch the app:
-
-```bash
-python app.py
-```
-
-On Windows, use `py app.py` if `python` is not the Python command on your system. On macOS, use `python3 app.py` if needed.
-
-## Build a macOS app locally
-
-Build on a Mac using Python 3.13 from [python.org](https://www.python.org/downloads/macos/),
-including Tcl/Tk. From the project folder:
-
-```bash
-python3 -m venv .build-venv
-.build-venv/bin/python -m pip install -r requirements-build.txt
-bash build_macos.sh
-```
-
-This creates `dist/Easy CSV Cleaner.app`, plus a versioned ZIP and SHA-256 checksum
-ready to attach to a GitHub release. `VERSION` sets the default app version.
-For example, an Apple Silicon build of version 1.0.0 produces
-`dist/EasyCsvCleaner-1.0.0-macOS-arm64.zip`. Build on Intel for an Intel download;
-these are separate native apps. Windows cannot build the macOS bundle.
-
-The build checks the ad-hoc code signature and runs the **packaged executable**
-with `--smoke-test`, exercising Tk startup and cleaning a CSV and a CSV inside a ZIP.
-It needs a macOS graphical session. Complete the manual checklist below as well.
-The bundle uses PyInstaller's default icon.
-
-Advanced overrides: `APP_PYTHON` selects another virtual environment's absolute
-Python path, `APP_VERSION=1.2.3` overrides the version, and `APP_ARCH` explicitly
-selects `arm64` or `x86_64` when the Python installation supports that architecture.
-
-## Build and distribute through GitHub
-
-The **Build macOS apps** workflow builds on macOS 14 (Apple Silicon) and macOS 15
-(Intel). These are build environments; older macOS versions still need testing
-before claiming support. It also builds relevant pull requests. To test without
-creating a release, run it from **Actions → Build macOS apps → Run workflow** and
-download the two architecture artifacts.
-
-To prepare a release, commit and push the packaging files, update `VERSION` for
-the release, then tag the corresponding commit (for example):
-
-```bash
-git tag v1.0.0
-git push origin v1.0.0
-```
-
-The workflow uses the tag as the bundle version and creates a **draft GitHub
-release** containing both ZIPs and checksums after both builds pass. Download and
-test both apps, complete the checklist, then publish the draft from **Releases**.
-Tags must use `vMAJOR.MINOR.PATCH` with numeric components. GitHub Actions must be
-enabled; the release job uses the repository's automatic `GITHUB_TOKEN` with
-`contents: write`, so no personal access token is needed.
-
-## Build a Windows executable
-
-On Windows, use Python 3.10 or newer. From PowerShell in the project folder, install the build dependency and create the executable:
-
-```powershell
-py -3.10 -m venv .venv
-.venv\Scripts\python.exe -m pip install -r requirements-build.txt
-./build_windows.bat
-```
-
-Use a standard python.org installation with Tcl/Tk included. The build script prefers `.build-venv\Scripts\python.exe` when it exists, then falls back to `.venv\Scripts\python.exe`.
-
-The double-clickable, windowed executable is created at `dist\EasyCsvCleaner.exe`. It bundles Python and Tkinter, so the recipient does not need to install Python. Build it on Windows; a Windows build does not create a macOS app. The executable is unsigned, so Windows SmartScreen may show a warning when it is first downloaded or launched.
-
-Choose a CSV file or ZIP archive with **Browse...**, then click **Clean CSV**. For a ZIP, the app searches its folders for CSV files. If there is more than one, choose which one to clean. The app then prompts for a destination, suggesting the source name with `-clean` added before the extension (for example, `data.csv` becomes `data-clean.csv`).
-
-The cleaner expects UTF-8 text (with or without a UTF-8 BOM) and comma-separated CSV using standard double-quote handling. It parses strictly: malformed quoting stops the operation with a physical line number when available. If decoding fails, save or export the file as UTF-8 and try again. Other encodings and delimiters are not currently selectable.
-
-The output is re-serialized as CSV, so quoting and line endings may be normalized even for rows that did not need line-break cleanup. A blank file reports 0 rows; blank lines are counted as rows; a row is counted as fixed if at least one field had an embedded line break replaced. Fields larger than Python's configured CSV field-size limit are rejected with an explanation. Errors and cancellation do not replace an existing destination.
-
-While the file is being cleaned, an animated progress bar is shown. Use **Cancel** to stop after the current CSV row; any partial output is removed. If an error occurs, the animation stops and the app displays the error.
-
-The selected CSV is read from the ZIP without extracting its folder structure. A temporary staging file is used during cleaning and removed afterward. The chooser shows each CSV's expanded size and compression ratio. To limit memory, disk, and decompression abuse, the app currently rejects archives with more than 10,000 entries, CSV members larger than 1 GiB, and members with compression ratios above 200:1. It also checks actual decompressed bytes while reading, verifies the selected archive member has not changed, and reports corrupt or unsupported ZIP data as an error.
-
-The app prevents choosing the input CSV or ZIP itself as the output. If the destination already exists, it asks before replacing it. It writes to a temporary file first, so cancellation or a cleaning error leaves an existing destination untouched; the finished output replaces it only after cleaning succeeds.
-
-## Windows and macOS verification checklist
-
-Before distributing a release, run the desktop app on each platform and check:
-
-- Select CSV and ZIP files through the native file picker, including paths and filenames with spaces and non-ASCII characters.
-- Confirm the save dialog suggests the expected `-clean.csv` filename and cancellation leaves the app idle.
-- Try replacing an existing destination: decline and confirm its contents remain unchanged; accept and confirm it is replaced only after success.
-- Cancel a large CSV and ZIP job, then confirm the old destination remains intact and temporary files are removed.
-- Try a corrupt ZIP, malformed CSV, and non-UTF-8 CSV; confirm the app shows an actionable error and remains usable.
-- On Windows, check behavior when the chosen destination is open in another app. On macOS, test the downloaded, unzipped app from Applications on both Apple Silicon and Intel, including the first-launch security prompt, native dialogs and quitting during cleaning.
-
-The code has been reviewed for platform-neutral paths and same-folder atomic replacement. The checklist still needs to be run on actual Windows and macOS desktop environments before claiming both platforms have been UI-verified.
-
-## Command line
-
-Clean a CSV file with:
-
-```bash
-python clean_csv.py path/to/your-file.csv
-```
-
-Pass `-o path/to/output.csv` to choose the output path. Without `-o`, the output is saved beside the input with `-clean` before its extension.
-
-## Example output
+For example, a cell containing:
 
 ```text
-Total rows processed: 100
-Rows with embedded linebreaks fixed: 4
-Clean file written to: path/to/your-file-clean.csv
+First line
+Second line
 ```
+
+becomes `First line Second line`. The CSV rows and columns stay in place.
+
+## Download
+
+**[Download the latest release](https://github.com/lewb-ox/easy-csv-cleaner/releases/latest)**
+
+Under **Assets**, choose the download for your computer:
+
+| Your computer | Download to choose |
+| --- | --- |
+| Windows | The Windows `.exe` file, or the ZIP containing it |
+| Mac with Apple Silicon (M-series chip) | The macOS ZIP with `arm64` in its name |
+| Mac with an Intel processor | The macOS ZIP with `x86_64` in its name |
+
+On a Mac, open **Apple menu → About This Mac** to check your chip or processor. Use the release notes for version-specific compatibility information.
+
+You do not need to install Python or any other dependencies. The **Source code** downloads are for developers; choose an app download from the list above.
+
+## Install and open
+
+### Windows
+
+1. Download the Windows app. If it comes in a ZIP, extract it first.
+2. Open `EasyCsvCleaner.exe`.
+
+The Windows app is unsigned, so Windows may show a security warning. Check that you downloaded it from this project's release page before proceeding. On a managed work computer, contact your IT support team if the app is blocked.
+
+### macOS
+
+1. Download and unzip the file for your Mac.
+2. Drag **Easy CSV Cleaner.app** into **Applications**.
+3. Open it from **Applications**.
+
+The macOS app is not Apple notarized. If macOS says the developer cannot be verified or Apple cannot check the app, first try opening it, then go to **System Settings → Privacy & Security → Open Anyway** if you trust the download. See [Apple's instructions for opening downloaded apps](https://support.apple.com/en-gb/102445). On a managed work Mac, your IT support team may need to help.
+
+## Clean a file
+
+1. Open **Easy CSV Cleaner** and click **Browse...**.
+2. Select a `.csv` file or a `.zip` archive containing CSV files.
+3. Click **Clean CSV**. For a ZIP, select the CSV you want to clean and click **Select**. Each run cleans one CSV.
+4. Choose where to save the cleaned file. The suggested name adds `-clean`, for example `data-clean.csv`.
+5. Wait for the completion message. It shows how many rows were processed, how many contained line breaks, and where the cleaned file was saved.
+
+An animated progress bar shows that cleaning is running; it does not show a percentage complete. Click **Cancel** to stop the operation.
+
+## What happens to your files?
+
+- **Your original stays unchanged.** The app prevents you from saving over the input CSV or ZIP.
+- **You choose the output.** If the destination already exists, the app asks before replacing it. Cancelling or encountering a cleaning error leaves an existing destination unchanged.
+- **Files stay on your computer.** Cleaning runs locally, without uploading your data or requiring an account or internet connection.
+- **Only embedded line breaks are replaced.** Line breaks within cells become spaces. CSV formatting, including quoting and line endings, may also be normalized when the file is saved.
+
+For ZIP input, the result is a separate CSV file. The original ZIP is unchanged, and you do not need to extract it yourself. Temporary working files are removed when cleaning finishes, is cancelled, or reports an error.
+
+## Supported files
+
+Use comma-separated CSV files saved as **UTF-8**, with or without a UTF-8 BOM. Quoted cells can contain commas and line breaks. Other delimiters, such as semicolons or tabs, and other text encodings are not selectable.
+
+ZIP archives can contain CSV files in subfolders. Password-protected CSV entries are not supported. The app also limits ZIP processing to 10,000 archive entries, a selected CSV of up to 1 GiB when expanded, and a compression ratio of up to 200:1.
+
+## Troubleshooting
+
+| Problem | What to try |
+| --- | --- |
+| The file is not valid UTF-8 | Re-export or save it as UTF-8 CSV in the app that created it. |
+| The app reports malformed CSV | Check the indicated line in the original file, especially quotation marks, or export a fresh CSV. |
+| A field exceeds the supported size | Shorten or split the very large cell, then try again. |
+| No CSV is found in a ZIP | Check that the archive contains files ending in `.csv`. |
+| A ZIP is encrypted or exceeds a processing limit | Extract the CSV yourself and select it directly. |
+| The output cannot be saved | Choose a writable folder and check that the destination file is not open in another app. |
+
+If a problem continues, [report an issue](https://github.com/lewb-ox/easy-csv-cleaner/issues). Include your operating system, app version, what you were doing, and the error message. Remove personal or confidential data from any examples you share.
+
+## Updates
+
+Download a newer version from the [releases page](https://github.com/lewb-ox/easy-csv-cleaner/releases) and replace your existing app. Release notes describe the changes in each version.
+
+## For developers
+
+For running from source, command-line use, building apps, and preparing releases, see [Development and releases](DEVELOPMENT.md).
 
 ## License
 
