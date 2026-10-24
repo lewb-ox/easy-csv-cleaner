@@ -19,6 +19,8 @@ On Windows, use `py app.py` if `python` is not the Python command on your system
 
 Choose a CSV file or ZIP archive with **Browse...**, then click **Clean CSV**. For a ZIP, the app searches its folders for CSV files. If there is more than one, choose which one to clean. The app then prompts for a destination, suggesting the source name with `-clean` added before the extension (for example, `data.csv` becomes `data-clean.csv`).
 
+While the file is being cleaned, an animated progress bar is shown. Use **Cancel** to stop after the current CSV row; any partial output is removed. If an error occurs, the animation stops and the app displays the error.
+
 The selected CSV is read directly from the ZIP; the archive is not extracted to disk. Only the cleaned CSV is saved to the chosen destination.
 
 ## Command line

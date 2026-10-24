@@ -2,10 +2,15 @@ import argparse
 import csv
 import io
 from pathlib import Path
+from threading import Event
 from typing import TextIO
 
 
-def clean_csv_stream(infile: TextIO, outfile: TextIO) -> tuple[int, int]:
+class CleaningCancelled(Exception):
+    """Raised when a user requests cancellation during CSV processing."""
+
+
+def clean_csv_stream(infile: TextIO, outfile: TextIO, cancel_event: Event | None = None) -> tuple[int, int]:
     """Clean CSV data between text streams and return row counts."""
     rows_fixed = 0
     total_rows = 0
@@ -14,6 +19,8 @@ def clean_csv_stream(infile: TextIO, outfile: TextIO) -> tuple[int, int]:
     writer = csv.writer(outfile, quoting=csv.QUOTE_MINIMAL)
 
     for row in reader:
+        if cancel_event and cancel_event.is_set():
+            raise CleaningCancelled
         total_rows += 1
         new_row = []
         row_changed = False
@@ -29,7 +36,11 @@ def clean_csv_stream(infile: TextIO, outfile: TextIO) -> tuple[int, int]:
     return total_rows, rows_fixed
 
 
-def clean_csv(input_path: str | Path, output_path: str | Path | None = None) -> tuple[Path, int, int]:
+def clean_csv(
+    input_path: str | Path,
+    output_path: str | Path | None = None,
+    cancel_event: Event | None = None,
+) -> tuple[Path, int, int]:
     """Clean a CSV file, optionally writing to a chosen destination."""
     input_file = Path(input_path).expanduser()
     if not input_file.is_file():
@@ -41,7 +52,11 @@ def clean_csv(input_path: str | Path, output_path: str | Path | None = None) -> 
 
     with input_file.open("r", newline="", encoding="utf-8-sig") as infile, \
          output_file.open("w", newline="", encoding="utf-8") as outfile:
-        total_rows, rows_fixed = clean_csv_stream(infile, outfile)
+        try:
+            total_rows, rows_fixed = clean_csv_stream(infile, outfile, cancel_event)
+        except CleaningCancelled:
+            output_file.unlink(missing_ok=True)
+            raise
 
     return output_file, total_rows, rows_fixed
 
