@@ -1,30 +1,37 @@
 # Easy CSV Cleaner
 
-A simple Python script that removes embedded line breaks from CSV fields and writes a cleaned CSV file.
-
-## What It Does
-
-- Reads a CSV file specified when you run the script
-- Replaces line breaks inside CSV fields with spaces
-- Writes the cleaned data beside the input file with `-clean` added before its extension
-- Prints a summary of the rows processed and fixed
+A small cross-platform Python app that replaces embedded line breaks in CSV fields with spaces.
 
 ## Requirements
 
 - Python 3
-- No external packages are required
+- Tkinter (included with most Python installations; on some Linux distributions it is installed separately)
 
-## Usage
+## Desktop app
 
-Run the script with the CSV file path as an argument:
+Launch the app:
+
+```bash
+python app.py
+```
+
+On Windows, use `py app.py` if `python` is not the Python command on your system. On macOS, use `python3 app.py` if needed.
+
+Choose a CSV file or ZIP archive with **Browse...**, then click **Clean CSV**. For a ZIP, the app searches its folders for CSV files. If there is more than one, choose which one to clean. The app then prompts for a destination, suggesting the source name with `-clean` added before the extension (for example, `data.csv` becomes `data-clean.csv`).
+
+The selected CSV is read directly from the ZIP; the archive is not extracted to disk. Only the cleaned CSV is saved to the chosen destination.
+
+## Command line
+
+Clean a CSV file with:
 
 ```bash
 python clean_csv.py path/to/your-file.csv
 ```
 
-The cleaned file is saved in the same folder with `-clean` added before the extension. For example, `data.csv` becomes `data-clean.csv`.
+Pass `-o path/to/output.csv` to choose the output path. Without `-o`, the output is saved beside the input with `-clean` before its extension.
 
-## Example Output
+## Example output
 
 ```text
 Total rows processed: 100
