@@ -4,9 +4,9 @@ A simple Python script that removes embedded line breaks from CSV fields and wri
 
 ## What It Does
 
-- Reads data from `input.csv`
+- Reads a CSV file specified when you run the script
 - Replaces line breaks inside CSV fields with spaces
-- Writes the cleaned data to `output_clean.csv`
+- Writes the cleaned data beside the input file with `-clean` added before its extension
 - Prints a summary of the rows processed and fixed
 
 ## Requirements
@@ -16,31 +16,20 @@ A simple Python script that removes embedded line breaks from CSV fields and wri
 
 ## Usage
 
-1. Place the CSV file you want to clean in the same folder as `clean_csv.py`.
-2. Name the file `input.csv`.
-3. Run the script:
+Run the script with the CSV file path as an argument:
 
 ```bash
-python clean_csv.py
+python clean_csv.py path/to/your-file.csv
 ```
 
-The cleaned file will be saved as `output_clean.csv`.
-
-## Customizing File Names
-
-To use different file names, edit these lines near the top of `clean_csv.py`:
-
-```python
-input_file = "input.csv"
-output_file = "output_clean.csv"
-```
+The cleaned file is saved in the same folder with `-clean` added before the extension. For example, `data.csv` becomes `data-clean.csv`.
 
 ## Example Output
 
 ```text
 Total rows processed: 100
 Rows with embedded linebreaks fixed: 4
-Clean file written to: output_clean.csv
+Clean file written to: path/to/your-file-clean.csv
 ```
 
 ## License

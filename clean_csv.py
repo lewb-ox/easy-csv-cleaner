@@ -1,8 +1,17 @@
 import csv
 import sys
+from pathlib import Path
 
-input_file = "input.csv"      # change to your file name
-output_file = "output_clean.csv"
+if len(sys.argv) != 2:
+    print(f"Usage: python {Path(sys.argv[0]).name} <input.csv>")
+    sys.exit(1)
+
+input_file = Path(sys.argv[1])
+if not input_file.is_file():
+    print(f"Input file not found: {input_file}")
+    sys.exit(1)
+
+output_file = input_file.with_name(f"{input_file.stem}-clean{input_file.suffix}")
 
 rows_fixed = 0
 total_rows = 0
