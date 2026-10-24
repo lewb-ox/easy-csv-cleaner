@@ -1,0 +1,8 @@
+.venv/
+.build-venv/
+.build-python/
+__pycache__/
+build/
+dist/
+*.spec
+python-3.*-amd64.exe

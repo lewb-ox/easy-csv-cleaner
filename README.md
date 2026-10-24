@@ -17,6 +17,20 @@ python app.py
 
 On Windows, use `py app.py` if `python` is not the Python command on your system. On macOS, use `python3 app.py` if needed.
 
+## Build a Windows executable
+
+On Windows, use Python 3.10 or newer. From PowerShell in the project folder, install the build dependency and create the executable:
+
+```powershell
+py -3.10 -m venv .venv
+.venv\Scripts\python.exe -m pip install -r requirements-build.txt
+./build_windows.bat
+```
+
+Use a standard python.org installation with Tcl/Tk included. The build script prefers `.build-venv\Scripts\python.exe` when it exists, then falls back to `.venv\Scripts\python.exe`.
+
+The double-clickable, windowed executable is created at `dist\EasyCsvCleaner.exe`. It bundles Python and Tkinter, so the recipient does not need to install Python. Build it on Windows; a Windows build does not create a macOS app. The executable is unsigned, so Windows SmartScreen may show a warning when it is first downloaded or launched.
+
 Choose a CSV file or ZIP archive with **Browse...**, then click **Clean CSV**. For a ZIP, the app searches its folders for CSV files. If there is more than one, choose which one to clean. The app then prompts for a destination, suggesting the source name with `-clean` added before the extension (for example, `data.csv` becomes `data-clean.csv`).
 
 The cleaner expects UTF-8 text (with or without a UTF-8 BOM) and comma-separated CSV using standard double-quote handling. It parses strictly: malformed quoting stops the operation with a physical line number when available. If decoding fails, save or export the file as UTF-8 and try again. Other encodings and delimiters are not currently selectable.
