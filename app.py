@@ -8,7 +8,7 @@ import zipfile
 from pathlib import Path, PurePosixPath
 from tkinter import filedialog, messagebox, ttk
 
-from clean_csv import CleaningCancelled, clean_csv, clean_csv_stream, clean_csv_to_path, same_path
+from clean_csv import CleaningCancelled, CsvInputError, clean_csv, clean_csv_stream, clean_csv_to_path, same_path
 
 MAX_ARCHIVE_ENTRIES = 10_000
 MAX_CSV_MEMBER_BYTES = 1 * 1024 * 1024 * 1024
@@ -197,10 +197,13 @@ class CsvCleanerApp:
         except CleaningCancelled:
             result = ("cancelled", None)
         except Exception as error:
-            # Preserve the user-facing error while retaining the traceback for diagnosis.
-            import traceback
-            detail = "".join(traceback.format_exception(type(error), error, error.__traceback__))
-            result = ("error", f"{error}\n\nDetails for troubleshooting:\n{detail}")
+            if isinstance(error, CsvInputError):
+                result = ("error", str(error))
+            else:
+                # Preserve the traceback for diagnosing unexpected failures.
+                import traceback
+                detail = "".join(traceback.format_exception(type(error), error, error.__traceback__))
+                result = ("error", f"{error}\n\nDetails for troubleshooting:\n{detail}")
         finally:
             self.result_queue.put(result)
 

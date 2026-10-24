@@ -11,15 +11,39 @@ class CleaningCancelled(Exception):
     """Raised when a user requests cancellation during CSV processing."""
 
 
+class CsvInputError(ValueError):
+    """Raised when CSV input cannot be decoded or parsed safely."""
+
+
 def clean_csv_stream(infile: TextIO, outfile: TextIO, cancel_event: Event | None = None) -> tuple[int, int]:
     """Clean CSV data between text streams and return row counts."""
     rows_fixed = 0
     total_rows = 0
 
-    reader = csv.reader(infile)
+    reader = csv.reader(infile, strict=True)
     writer = csv.writer(outfile, quoting=csv.QUOTE_MINIMAL)
 
-    for row in reader:
+    while True:
+        try:
+            row = next(reader)
+        except StopIteration:
+            break
+        except UnicodeDecodeError as error:
+            raise CsvInputError(
+                f"The CSV is not valid UTF-8 near physical line {reader.line_num}. "
+                "Save or export it as UTF-8, then try again."
+            ) from error
+        except csv.Error as error:
+            if "field larger than field limit" in str(error).lower():
+                limit = csv.field_size_limit()
+                explanation = (
+                    f"A field near physical line {reader.line_num} exceeds the supported "
+                    f"field size of {limit:,} characters. Split or shorten that field and retry."
+                )
+            else:
+                explanation = f"Malformed CSV near physical line {reader.line_num}: {error}"
+            raise CsvInputError(explanation) from error
+
         if cancel_event and cancel_event.is_set():
             raise CleaningCancelled
         total_rows += 1
@@ -108,7 +132,7 @@ def main() -> int:
 
     try:
         output_file, total_rows, rows_fixed = clean_csv(args.input_csv, args.output)
-    except (OSError, csv.Error) as error:
+    except (OSError, csv.Error, CsvInputError) as error:
         parser.error(str(error))
 
     print(f"Total rows processed: {total_rows}")

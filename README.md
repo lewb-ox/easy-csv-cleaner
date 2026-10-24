@@ -19,6 +19,10 @@ On Windows, use `py app.py` if `python` is not the Python command on your system
 
 Choose a CSV file or ZIP archive with **Browse...**, then click **Clean CSV**. For a ZIP, the app searches its folders for CSV files. If there is more than one, choose which one to clean. The app then prompts for a destination, suggesting the source name with `-clean` added before the extension (for example, `data.csv` becomes `data-clean.csv`).
 
+The cleaner expects UTF-8 text (with or without a UTF-8 BOM) and comma-separated CSV using standard double-quote handling. It parses strictly: malformed quoting stops the operation with a physical line number when available. If decoding fails, save or export the file as UTF-8 and try again. Other encodings and delimiters are not currently selectable.
+
+The output is re-serialized as CSV, so quoting and line endings may be normalized even for rows that did not need line-break cleanup. A blank file reports 0 rows; blank lines are counted as rows; a row is counted as fixed if at least one field had an embedded line break replaced. Fields larger than Python's configured CSV field-size limit are rejected with an explanation. Errors and cancellation do not replace an existing destination.
+
 While the file is being cleaned, an animated progress bar is shown. Use **Cancel** to stop after the current CSV row; any partial output is removed. If an error occurs, the animation stops and the app displays the error.
 
 The selected CSV is read from the ZIP without extracting its folder structure. A temporary staging file is used during cleaning and removed afterward. The chooser shows each CSV's expanded size and compression ratio. To limit memory, disk, and decompression abuse, the app currently rejects archives with more than 10,000 entries, CSV members larger than 1 GiB, and members with compression ratios above 200:1. It also checks actual decompressed bytes while reading, verifies the selected archive member has not changed, and reports corrupt or unsupported ZIP data as an error.
