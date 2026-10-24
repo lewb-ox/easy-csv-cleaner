@@ -1,5 +1,6 @@
 import csv
 import queue
+import sys
 import tempfile
 import threading
 import tkinter as tk
@@ -367,7 +368,35 @@ class CsvCleanerApp:
 
 def main() -> None:
     root = tk.Tk()
-    CsvCleanerApp(root)
+    app = CsvCleanerApp(root)
+    if sys.argv[1:] == ["--smoke-test"]:
+        # Run inside the frozen app to check bundled Tk, imports and file handling.
+        try:
+            root.update()
+            with tempfile.TemporaryDirectory(prefix="csv-cleaner-smoke-") as folder:
+                source = Path(folder) / "café input.csv"
+                source.write_text('name,notes\nAlice,"first\nsecond"\n', encoding="utf-8")
+                output, total, fixed = clean_csv(source)
+                if (total, fixed) != (2, 1):
+                    raise RuntimeError("CSV smoke test returned incorrect row counts")
+                expected = [["name", "notes"], ["Alice", "first second"]]
+                with output.open(newline="", encoding="utf-8") as stream:
+                    if list(csv.reader(stream)) != expected:
+                        raise RuntimeError("CSV smoke test returned incorrect output")
+                archive_path = Path(folder) / "archive.zip"
+                with zipfile.ZipFile(archive_path, "w") as archive:
+                    archive.write(source, "nested/input.csv")
+                with zipfile.ZipFile(archive_path) as archive:
+                    member = archive.infolist()[0]
+                destination = Path(folder) / "zip-clean.csv"
+                if app.clean_zip_to_path(archive_path, member, destination) != (2, 1):
+                    raise RuntimeError("ZIP smoke test returned incorrect row counts")
+                if destination.read_bytes() != output.read_bytes():
+                    raise RuntimeError("ZIP smoke test returned incorrect output")
+            print("Packaged app smoke test passed (Tk, CSV and ZIP).")
+        finally:
+            root.destroy()
+        return
     root.mainloop()
 
 

@@ -1,0 +1,91 @@
+name: Build macOS apps
+
+on:
+  push:
+    tags: ['v[0-9]*.[0-9]*.[0-9]*']
+  pull_request:
+    paths:
+      - '*.py'
+      - 'packaging/**'
+      - 'build_macos.sh'
+      - 'requirements-build.txt'
+      - 'VERSION'
+      - '.github/workflows/macos-release.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-14
+            arch: arm64
+          - runner: macos-15-intel
+            arch: x86_64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: pip
+          cache-dependency-path: requirements-build.txt
+      - name: Install build tools
+        run: |
+          python -m venv .build-venv
+          .build-venv/bin/python -m pip install -r requirements-build.txt
+      - name: Build, verify and archive app
+        env:
+          APP_ARCH: ${{ matrix.arch }}
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            export APP_VERSION="${GITHUB_REF_NAME#v}"
+          fi
+          bash build_macos.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macOS-${{ matrix.arch }}
+          path: |
+            dist/*.zip
+            dist/*.sha256
+          if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: macOS-*
+          path: release
+          merge-multiple: true
+      - name: Create draft GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          cat > release-notes.txt <<'EOF'
+          Download arm64 for Apple Silicon Macs or x86_64 for Intel Macs.
+          Unzip and drag Easy CSV Cleaner.app into Applications. Python is bundled.
+
+          These builds are ad-hoc signed, not Apple notarized. macOS may block
+          first launch. After attempting to open, use System Settings > Privacy
+          & Security > Open Anyway if you trust this download.
+
+          Before publishing, complete the desktop verification checklist in README.md
+          on both architectures. The build checks bundle signatures, Tk startup,
+          and CSV/ZIP cleaning; it does not exercise every native dialog.
+          EOF
+          if ! gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release create "$RELEASE_TAG" --verify-tag --draft --title "Easy CSV Cleaner $RELEASE_TAG" --notes-file release-notes.txt
+          fi
+          gh release upload "$RELEASE_TAG" release/*.zip release/*.sha256 --clobber
