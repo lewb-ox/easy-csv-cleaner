@@ -10,6 +10,10 @@ from tkinter import filedialog, messagebox, ttk
 
 from clean_csv import CleaningCancelled, clean_csv, clean_csv_stream, clean_csv_to_path, same_path
 
+MAX_ARCHIVE_ENTRIES = 10_000
+MAX_CSV_MEMBER_BYTES = 1 * 1024 * 1024 * 1024
+MAX_COMPRESSION_RATIO = 200
+
 
 class DestinationDeclined(Exception):
     """Raised when the user declines replacing an existing output."""
@@ -106,8 +110,13 @@ class CsvCleanerApp:
             return ("csv", destination, source)
 
         with zipfile.ZipFile(source) as archive:
+            entries = archive.infolist()
+            if len(entries) > MAX_ARCHIVE_ENTRIES:
+                raise ValueError(
+                    f"This ZIP contains more than {MAX_ARCHIVE_ENTRIES:,} entries and is too large to inspect safely."
+                )
             members = [
-                item for item in archive.infolist()
+                item for item in entries
                 if not item.is_dir() and PurePosixPath(item.filename).suffix.lower() == ".csv"
             ]
         if not members:
@@ -116,6 +125,7 @@ class CsvCleanerApp:
         selected_member = self.choose_member(members)
         if selected_member is None:
             return None
+        self.validate_zip_member(selected_member)
         member_path = PurePosixPath(selected_member.filename)
         destination = self.choose_output(f"{member_path.stem}-clean{member_path.suffix}")
         if destination is None:
@@ -132,6 +142,22 @@ class CsvCleanerApp:
             parent=self.root,
         ):
             raise DestinationDeclined
+
+    @staticmethod
+    def validate_zip_member(member: zipfile.ZipInfo) -> None:
+        if member.flag_bits & 0x1:
+            raise ValueError(f"The selected CSV is encrypted and cannot be opened: {member.filename}")
+        if member.file_size > MAX_CSV_MEMBER_BYTES:
+            raise ValueError(
+                f"The selected CSV expands to {member.file_size / (1024 ** 3):.2f} GiB. "
+                f"The current limit is {MAX_CSV_MEMBER_BYTES / (1024 ** 3):.0f} GiB."
+            )
+        ratio = member.file_size / max(member.compress_size, 1)
+        if ratio > MAX_COMPRESSION_RATIO:
+            raise ValueError(
+                f"The selected CSV has a compression ratio of {ratio:.0f}:1, above the "
+                f"{MAX_COMPRESSION_RATIO}:1 safety limit."
+            )
 
     def choose_output(self, suggested_name: str) -> Path | None:
         destination = filedialog.asksaveasfilename(
@@ -181,18 +207,41 @@ class CsvCleanerApp:
     def clean_zip_to_path(self, archive_path: Path, member: zipfile.ZipInfo, destination: Path) -> tuple[int, int]:
         temporary_input: Path | None = None
         try:
-            with zipfile.ZipFile(archive_path) as archive, archive.open(member, "r") as binary_source:
-                with tempfile.NamedTemporaryFile(
-                    mode="w+b", dir=destination.parent, prefix=f".{destination.name}.", suffix=".input.tmp", delete=False
-                ) as staged_source:
-                    temporary_input = Path(staged_source.name)
-                    while True:
-                        if self.cancel_event.is_set():
-                            raise CleaningCancelled
-                        chunk = binary_source.read(1024 * 1024)
-                        if not chunk:
-                            break
-                        staged_source.write(chunk)
+            with zipfile.ZipFile(archive_path) as archive:
+                current_member = next(
+                    (item for item in archive.infolist() if item.header_offset == member.header_offset),
+                    None,
+                )
+                if (
+                    current_member is None
+                    or current_member.filename != member.filename
+                    or current_member.CRC != member.CRC
+                    or current_member.file_size != member.file_size
+                    or current_member.compress_size != member.compress_size
+                ):
+                    raise ValueError("The ZIP archive changed after you selected the CSV. Please select it again.")
+                self.validate_zip_member(current_member)
+                with archive.open(current_member, "r") as binary_source:
+                    with tempfile.NamedTemporaryFile(
+                        mode="w+b", dir=destination.parent, prefix=f".{destination.name}.", suffix=".input.tmp", delete=False
+                    ) as staged_source:
+                        temporary_input = Path(staged_source.name)
+                        bytes_read = 0
+                        while True:
+                            if self.cancel_event.is_set():
+                                raise CleaningCancelled
+                            chunk = binary_source.read(1024 * 1024)
+                            if not chunk:
+                                break
+                            bytes_read += len(chunk)
+                            if bytes_read > MAX_CSV_MEMBER_BYTES:
+                                raise ValueError("The CSV expanded beyond the 1 GiB safety limit while reading the ZIP.")
+                            actual_ratio = bytes_read / max(current_member.compress_size, 1)
+                            if actual_ratio > MAX_COMPRESSION_RATIO:
+                                raise ValueError(
+                                    f"The CSV exceeded the {MAX_COMPRESSION_RATIO}:1 compression ratio safety limit while reading the ZIP."
+                                )
+                            staged_source.write(chunk)
             try:
                 return clean_csv_to_path(temporary_input, destination, self.cancel_event)
             finally:
@@ -239,16 +288,18 @@ class CsvCleanerApp:
             messagebox.showerror("Could not clean file", payload, parent=self.root)
 
     def choose_member(self, members: list[zipfile.ZipInfo]) -> zipfile.ZipInfo | None:
-        if len(members) == 1:
-            return members[0]
         dialog = tk.Toplevel(self.root)
         dialog.title("Choose CSV in archive")
         dialog.transient(self.root)
         dialog.grab_set()
-        ttk.Label(dialog, text="This archive contains multiple CSV files. Choose one to clean:").pack(
+        ttk.Label(dialog, text="Choose a CSV to clean. The expanded size and compression ratio are shown:").pack(
             padx=16, pady=(16, 8), anchor="w"
         )
-        values = [member.filename for member in members]
+        values = [
+            f"#{index + 1}  {member.filename}  |  {member.file_size / (1024 ** 2):.1f} MiB  |  "
+            f"{member.file_size / max(member.compress_size, 1):.1f}:1"
+            for index, member in enumerate(members)
+        ]
         choice = tk.StringVar(value=values[0])
         ttk.Combobox(dialog, textvariable=choice, values=values, state="readonly", width=60).pack(padx=16, fill="x")
         result: list[zipfile.ZipInfo | None] = [None]

@@ -21,7 +21,7 @@ Choose a CSV file or ZIP archive with **Browse...**, then click **Clean CSV**. F
 
 While the file is being cleaned, an animated progress bar is shown. Use **Cancel** to stop after the current CSV row; any partial output is removed. If an error occurs, the animation stops and the app displays the error.
 
-The selected CSV is read directly from the ZIP; the archive is not extracted to disk. Only the cleaned CSV is saved to the chosen destination.
+The selected CSV is read from the ZIP without extracting its folder structure. A temporary staging file is used during cleaning and removed afterward. The chooser shows each CSV's expanded size and compression ratio. To limit memory, disk, and decompression abuse, the app currently rejects archives with more than 10,000 entries, CSV members larger than 1 GiB, and members with compression ratios above 200:1. It also checks actual decompressed bytes while reading, verifies the selected archive member has not changed, and reports corrupt or unsupported ZIP data as an error.
 
 The app prevents choosing the input CSV or ZIP itself as the output. If the destination already exists, it asks before replacing it. It writes to a temporary file first, so cancellation or a cleaning error leaves an existing destination untouched; the finished output replaces it only after cleaning succeeds.
 
