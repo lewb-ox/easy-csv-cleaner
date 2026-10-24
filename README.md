@@ -4,7 +4,7 @@ A small cross-platform Python app that replaces embedded line breaks in CSV fiel
 
 ## Requirements
 
-- Python 3
+- Python 3.10 or newer
 - Tkinter (included with most Python installations; on some Linux distributions it is installed separately)
 
 ## Desktop app
@@ -28,6 +28,19 @@ While the file is being cleaned, an animated progress bar is shown. Use **Cancel
 The selected CSV is read from the ZIP without extracting its folder structure. A temporary staging file is used during cleaning and removed afterward. The chooser shows each CSV's expanded size and compression ratio. To limit memory, disk, and decompression abuse, the app currently rejects archives with more than 10,000 entries, CSV members larger than 1 GiB, and members with compression ratios above 200:1. It also checks actual decompressed bytes while reading, verifies the selected archive member has not changed, and reports corrupt or unsupported ZIP data as an error.
 
 The app prevents choosing the input CSV or ZIP itself as the output. If the destination already exists, it asks before replacing it. It writes to a temporary file first, so cancellation or a cleaning error leaves an existing destination untouched; the finished output replaces it only after cleaning succeeds.
+
+## Windows and macOS verification checklist
+
+Before distributing a release, run the desktop app on each platform and check:
+
+- Select CSV and ZIP files through the native file picker, including paths and filenames with spaces and non-ASCII characters.
+- Confirm the save dialog suggests the expected `-clean.csv` filename and cancellation leaves the app idle.
+- Try replacing an existing destination: decline and confirm its contents remain unchanged; accept and confirm it is replaced only after success.
+- Cancel a large CSV and ZIP job, then confirm the old destination remains intact and temporary files are removed.
+- Try a corrupt ZIP, malformed CSV, and non-UTF-8 CSV; confirm the app shows an actionable error and remains usable.
+- On Windows, check behavior when the chosen destination is open in another app. On macOS, check the app launches with the intended Python installation and Tkinter is available.
+
+The code has been reviewed for platform-neutral paths and same-folder atomic replacement. The checklist still needs to be run on actual Windows and macOS desktop environments before claiming both platforms have been UI-verified.
 
 ## Command line
 

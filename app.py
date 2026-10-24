@@ -1,5 +1,4 @@
 import csv
-import io
 import queue
 import tempfile
 import threading
