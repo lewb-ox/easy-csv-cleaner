@@ -1,7 +1,8 @@
 import argparse
 import csv
-import io
+import os
 from pathlib import Path
+import tempfile
 from threading import Event
 from typing import TextIO
 
@@ -50,21 +51,53 @@ def clean_csv(
         f"{input_file.stem}-clean{input_file.suffix}"
     )
 
-    with input_file.open("r", newline="", encoding="utf-8-sig") as infile, \
-         output_file.open("w", newline="", encoding="utf-8") as outfile:
-        try:
-            total_rows, rows_fixed = clean_csv_stream(infile, outfile, cancel_event)
-        except CleaningCancelled:
-            output_file.unlink(missing_ok=True)
-            raise
+    if same_path(input_file, output_file):
+        raise ValueError("The output file cannot be the same as the input file.")
+
+    total_rows, rows_fixed = clean_csv_to_path(input_file, output_file, cancel_event)
 
     return output_file, total_rows, rows_fixed
 
 
-def clean_csv_text(data: bytes, outfile: TextIO) -> tuple[int, int]:
-    """Clean UTF-8 CSV bytes from a ZIP member into a text output stream."""
-    text = data.decode("utf-8-sig")
-    return clean_csv_stream(io.StringIO(text, newline=""), outfile)
+def same_path(first: Path, second: Path) -> bool:
+    """Compare paths safely, including aliases and paths that do not exist yet."""
+    try:
+        return os.path.samefile(first, second)
+    except (FileNotFoundError, OSError):
+        return first.resolve() == second.resolve()
+
+
+def clean_csv_to_path(
+    input_file: Path,
+    output_file: Path,
+    cancel_event: Event | None = None,
+) -> tuple[int, int]:
+    """Clean into a temporary sibling, then atomically replace the destination."""
+    if not output_file.parent.is_dir():
+        raise FileNotFoundError(f"Output folder does not exist: {output_file.parent}")
+    temporary_path: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            newline="",
+            encoding="utf-8",
+            dir=output_file.parent,
+            prefix=f".{output_file.name}.",
+            suffix=".tmp",
+            delete=False,
+        ) as outfile:
+            temporary_path = Path(outfile.name)
+            with input_file.open("r", newline="", encoding="utf-8-sig") as infile:
+                total_rows, rows_fixed = clean_csv_stream(infile, outfile, cancel_event)
+
+        if cancel_event and cancel_event.is_set():
+            raise CleaningCancelled
+        os.replace(temporary_path, output_file)
+        temporary_path = None
+        return total_rows, rows_fixed
+    finally:
+        if temporary_path is not None:
+            temporary_path.unlink(missing_ok=True)
 
 
 def main() -> int:

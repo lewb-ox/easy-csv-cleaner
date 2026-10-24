@@ -23,6 +23,8 @@ While the file is being cleaned, an animated progress bar is shown. Use **Cancel
 
 The selected CSV is read directly from the ZIP; the archive is not extracted to disk. Only the cleaned CSV is saved to the chosen destination.
 
+The app prevents choosing the input CSV or ZIP itself as the output. If the destination already exists, it asks before replacing it. It writes to a temporary file first, so cancellation or a cleaning error leaves an existing destination untouched; the finished output replaces it only after cleaning succeeds.
+
 ## Command line
 
 Clean a CSV file with:

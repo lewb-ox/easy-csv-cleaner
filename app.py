@@ -1,13 +1,18 @@
 import csv
 import io
 import queue
+import tempfile
 import threading
 import tkinter as tk
 import zipfile
 from pathlib import Path, PurePosixPath
 from tkinter import filedialog, messagebox, ttk
 
-from clean_csv import CleaningCancelled, clean_csv, clean_csv_stream
+from clean_csv import CleaningCancelled, clean_csv, clean_csv_stream, clean_csv_to_path, same_path
+
+
+class DestinationDeclined(Exception):
+    """Raised when the user declines replacing an existing output."""
 
 
 class CsvCleanerApp:
@@ -71,7 +76,9 @@ class CsvCleanerApp:
 
         try:
             job = self.prepare_job(selected_path)
-        except (OSError, zipfile.BadZipFile) as error:
+        except DestinationDeclined:
+            return
+        except (OSError, ValueError, zipfile.BadZipFile) as error:
             messagebox.showerror("Could not open file", str(error), parent=self.root)
             return
         if job is None:
@@ -91,6 +98,7 @@ class CsvCleanerApp:
             destination = self.choose_output(f"{source.stem}-clean{source.suffix}")
             if destination is None:
                 return None
+            self.validate_destination(source, destination)
             return ("csv", destination, source)
 
         with zipfile.ZipFile(source) as archive:
@@ -108,7 +116,18 @@ class CsvCleanerApp:
         destination = self.choose_output(f"{member_path.stem}-clean{member_path.suffix}")
         if destination is None:
             return None
+        self.validate_destination(source, destination)
         return ("zip", destination, (source, selected_member))
+
+    def validate_destination(self, source: Path, destination: Path) -> None:
+        if same_path(source, destination):
+            raise ValueError("Choose a different output path so the original file is preserved.")
+        if destination.exists() and not messagebox.askyesno(
+            "Replace existing file?",
+            f"The file already exists:\n{destination}\n\nReplace it after cleaning completes?",
+            parent=self.root,
+        ):
+            raise DestinationDeclined
 
     def choose_output(self, suggested_name: str) -> Path | None:
         destination = filedialog.asksaveasfilename(
@@ -134,26 +153,37 @@ class CsvCleanerApp:
                 output, total, fixed = clean_csv(source_info, destination, self.cancel_event)
             else:
                 archive_path, member = source_info
-                with zipfile.ZipFile(archive_path) as archive, archive.open(member, "r") as binary_source:
-                    with io.TextIOWrapper(binary_source, encoding="utf-8-sig", newline="") as source, destination.open(
-                        "w", newline="", encoding="utf-8"
-                    ) as output_file:
-                        try:
-                            total, fixed = clean_csv_stream(source, output_file, self.cancel_event)
-                        except CleaningCancelled:
-                            output_file.close()
-                            destination.unlink(missing_ok=True)
-                            raise
+                total, fixed = self.clean_zip_to_path(archive_path, member, destination)
                 output = destination
             self.result_queue.put(("success", (output, total, fixed)))
         except CleaningCancelled:
             self.result_queue.put(("cancelled", None))
         except (OSError, zipfile.BadZipFile, csv.Error, UnicodeError, RuntimeError) as error:
-            try:
-                destination.unlink(missing_ok=True)
-            except OSError:
-                pass
             self.result_queue.put(("error", str(error)))
+
+    def clean_zip_to_path(self, archive_path: Path, member: zipfile.ZipInfo, destination: Path) -> tuple[int, int]:
+        temporary_input: Path | None = None
+        try:
+            with zipfile.ZipFile(archive_path) as archive, archive.open(member, "r") as binary_source:
+                with tempfile.NamedTemporaryFile(
+                    mode="w+b", dir=destination.parent, prefix=f".{destination.name}.", suffix=".input.tmp", delete=False
+                ) as staged_source:
+                    temporary_input = Path(staged_source.name)
+                    while True:
+                        if self.cancel_event.is_set():
+                            raise CleaningCancelled
+                        chunk = binary_source.read(1024 * 1024)
+                        if not chunk:
+                            break
+                        staged_source.write(chunk)
+            try:
+                return clean_csv_to_path(temporary_input, destination, self.cancel_event)
+            finally:
+                temporary_input.unlink(missing_ok=True)
+        except BaseException:
+            if temporary_input is not None:
+                temporary_input.unlink(missing_ok=True)
+            raise
 
     def cancel_cleaning(self) -> None:
         self.cancel_event.set()
