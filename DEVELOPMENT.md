@@ -105,6 +105,18 @@ python clean_csv.py path/to/your-file.csv
 
 Pass `-o path/to/output.csv` to choose the output path. Without `-o`, the output is saved beside the input with `-clean` before its extension.
 
+To export only rows that contained embedded line breaks, after fixing them:
+
+```bash
+python clean_csv.py path/to/your-file.csv --only-fixed -o path/to/fixed-rows.csv
+```
+
+Unchanged rows, including an unchanged header, are omitted. If no rows need fixing,
+the output file is empty. The summary still counts all input rows processed and
+also reports the number of rows exported. Without `--only-fixed`, all rows are
+exported as usual. This option is available in the CLI and through the Python
+cleaning functions as the keyword argument `only_fixed=True`.
+
 ## Example output
 
 ```text
